@@ -5,7 +5,6 @@ from flask import Flask
 from threading import Thread
 import traceback
 import os
-import asyncio
 
 # =========================
 # CONFIG
@@ -51,9 +50,6 @@ vast_count = 0
 
 live_message_id = None
 
-# lock system (prevents double click abuse)
-image_locks = {}
-
 # =========================
 # SAVE / LOAD
 # =========================
@@ -72,6 +68,7 @@ def load_counter():
             small_count = data.get("small", 0)
             mediant_count = data.get("mediant", 0)
             vast_count = data.get("vast", 0)
+
     except:
         pass
 
@@ -93,10 +90,7 @@ def save_counter():
 async def update_live_board(channel):
     global live_message_id
 
-    embed = discord.Embed(
-        title="📊 LIVE COUNTER BOARD",
-        color=discord.Color.green()
-    )
+    embed = discord.Embed(title="📊 LIVE COUNTER BOARD", color=discord.Color.green())
 
     embed.add_field(name="📊 Total Counter", value=str(counter), inline=False)
 
@@ -153,18 +147,20 @@ class AddModal(ui.Modal):
             used_images.add(self.message_id)
             save_counter()
 
-            await interaction.response.send_message(
+            await interaction.response.defer()
+
+            await interaction.followup.send(
                 f"✅ {interaction.user.mention} added **{value}** to **{self.pack}**!"
             )
 
             await update_live_board(interaction.channel)
 
-        except:
+        except Exception:
             print(traceback.format_exc())
             await interaction.response.send_message("❌ Invalid number!", ephemeral=True)
 
 # =========================
-# VIEW
+# IMAGE VIEW (FIXED - SINGLE CLASS ONLY)
 # =========================
 class ImageView(ui.View):
     def __init__(self, message_id):
@@ -182,43 +178,42 @@ class ImageView(ui.View):
 
         return True
 
+    async def already_used(self, interaction):
+        if self.message_id in used_images:
+            await interaction.response.send_message("❌ Already used!", ephemeral=True)
+            return True
+        return False
+
     async def use_button(self, interaction, size):
+        used_images.add(self.message_id)
 
-        # LOCK (prevents double click spam)
-        if image_locks.get(self.message_id):
-            return await interaction.response.send_message("❌ Already processing!", ephemeral=True)
+        self.clear_items()
+        await interaction.response.edit_message(view=self)
 
-        image_locks[self.message_id] = True
-
-        try:
-            if self.message_id in used_images:
-                return await interaction.response.send_message("❌ Already processed!", ephemeral=True)
-
-            used_images.add(self.message_id)
-
-            self.clear_items()
-            await interaction.response.edit_message(view=self)
-
-            await interaction.followup.send_modal(AddModal(size, self.message_id))
-
-        finally:
-            await asyncio.sleep(1)
-            image_locks.pop(self.message_id, None)
+        await interaction.followup.send_modal(AddModal(size, self.message_id))
 
     @discord.ui.button(label="Mini", style=discord.ButtonStyle.success)
-    async def mini(self, interaction, button):
+    async def mini(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if await self.already_used(interaction):
+            return
         await self.use_button(interaction, "Mini")
 
     @discord.ui.button(label="Small", style=discord.ButtonStyle.primary)
-    async def small(self, interaction, button):
+    async def small(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if await self.already_used(interaction):
+            return
         await self.use_button(interaction, "Small")
 
     @discord.ui.button(label="Mediant", style=discord.ButtonStyle.secondary)
-    async def mediant(self, interaction, button):
+    async def mediant(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if await self.already_used(interaction):
+            return
         await self.use_button(interaction, "Mediant")
 
     @discord.ui.button(label="Vast", style=discord.ButtonStyle.danger)
-    async def vast(self, interaction, button):
+    async def vast(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if await self.already_used(interaction):
+            return
         await self.use_button(interaction, "Vast")
 
 # =========================
@@ -234,32 +229,34 @@ async def on_message(message):
     if message.channel.id != ALLOWED_CHANNEL_ID:
         return
 
-    # IMAGE DETECTION
+    # prevent duplicate processing
+    if message.id in used_images:
+        return
+
     if message.attachments:
         for att in message.attachments:
             if att.content_type and att.content_type.startswith("image"):
-                await message.reply("🖼️ Choose option:", view=ImageView(message.id))
+
+                await message.reply(
+                    "🖼️ Image detected — choose option:",
+                    view=ImageView(message.id)
+                )
+
                 await update_live_board(message.channel)
 
-    # RESET COMMAND
     if message.content.startswith("!clear"):
         if message.author.id != OWNER_ID:
             return await message.reply("❌ Owner only!")
 
         counter = 0
-        mini_count = 0
-        small_count = 0
-        mediant_count = 0
-        vast_count = 0
-
-        used_images.clear()
+        mini_count = small_count = mediant_count = vast_count = 0
         save_counter()
 
-        await message.channel.send("🧹 Reset done!")
+        await message.channel.send("🧹 Counter reset!")
         await update_live_board(message.channel)
 
 # =========================
-# READY EVENT
+# READY
 # =========================
 @client.event
 async def on_ready():
@@ -267,12 +264,12 @@ async def on_ready():
     print(f"Logged in as {client.user}")
 
 # =========================
-# START BOT
+# START
 # =========================
 TOKEN = os.getenv("TOKEN")
 
 if TOKEN is None:
-    raise Exception("❌ TOKEN is missing!")
+    raise Exception("❌ TOKEN is missing! Set it in environment variables.")
 
 keep_alive()
 client.run(TOKEN)
