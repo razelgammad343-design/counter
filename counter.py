@@ -1,14 +1,11 @@
 import discord
-from discord import ui
 import json
 from flask import Flask
 from threading import Thread
 import traceback
-import os
 
-# =========================
-# CONFIG
-# =========================
+TOKEN = "YOUR_BOT_TOKEN"
+
 ALLOWED_CHANNEL_ID = 1467897643471732980
 ALLOWED_ROLE_ID = 1466987521987711047
 OWNER_ID = 923096413934616596
@@ -32,7 +29,7 @@ def home():
     return "Bot is alive!"
 
 def run():
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    app.run(host="0.0.0.0", port=8080)
 
 def keep_alive():
     Thread(target=run, daemon=True).start()
@@ -43,12 +40,7 @@ def keep_alive():
 counter = 0
 used_images = set()
 
-mini_count = 0
-small_count = 0
-mediant_count = 0
-vast_count = 0
-
-live_message_id = None
+mini_count = small_count = mediant_count = vast_count = 0
 
 # =========================
 # SAVE / LOAD
@@ -85,50 +77,51 @@ def save_counter():
         }, f)
 
 # =========================
-# LIVE BOARD
+# LIVE LOG
 # =========================
-async def update_live_board(channel):
-    global live_message_id
+async def send_live_log(channel, user, pack, value):
+    try:
+        embed = discord.Embed(
+            title="📊 LIVE COUNTER LOG",
+            color=discord.Color.green()
+        )
 
-    embed = discord.Embed(title="📊 LIVE COUNTER BOARD", color=discord.Color.green())
+        embed.add_field(name="👤 User", value=user.mention, inline=True)
+        embed.add_field(name="📦 Type", value=pack, inline=True)
+        embed.add_field(name="➕ Added", value=str(value), inline=True)
 
-    embed.add_field(name="📊 Total Counter", value=str(counter), inline=False)
+        embed.add_field(name="📊 Total Counter", value=str(counter), inline=False)
 
-    embed.add_field(
-        name="📦 Breakdown",
-        value=(
-            f"🟢 Mini: {mini_count}\n"
-            f"🔵 Small: {small_count}\n"
-            f"🟡 Mediant: {mediant_count}\n"
-            f"🔴 Vast: {vast_count}"
-        ),
-        inline=False
-    )
+        embed.add_field(
+            name="📦 Breakdown",
+            value=(
+                f"🟢 Mini: {mini_count}\n"
+                f"🔵 Small: {small_count}\n"
+                f"🟡 Mediant: {mediant_count}\n"
+                f"🔴 Vast: {vast_count}"
+            ),
+            inline=False
+        )
 
-    if live_message_id:
-        try:
-            msg = await channel.fetch_message(live_message_id)
-            await msg.edit(embed=embed)
-            return
-        except:
-            pass
+        await channel.send(embed=embed)
 
-    msg = await channel.send(embed=embed)
-    live_message_id = msg.id
+    except:
+        print("⚠️ Failed to send live log")
 
 # =========================
 # MODAL
 # =========================
-class AddModal(ui.Modal):
+class AddModal(discord.ui.Modal):
     def __init__(self, pack, message_id):
         super().__init__(title=f"{pack} Input")
         self.pack = pack
         self.message_id = message_id
 
-    number = ui.TextInput(label="Enter number")
+    number = discord.ui.TextInput(label="Enter number")
 
     async def on_submit(self, interaction: discord.Interaction):
-        global counter, mini_count, small_count, mediant_count, vast_count
+        global counter
+        global mini_count, small_count, mediant_count, vast_count
 
         try:
             value = int(self.number.value)
@@ -153,19 +146,25 @@ class AddModal(ui.Modal):
                 f"✅ {interaction.user.mention} added **{value}** to **{self.pack}**!"
             )
 
-            await update_live_board(interaction.channel)
+            await send_live_log(interaction.channel, interaction.user, self.pack, value)
 
         except Exception:
             print(traceback.format_exc())
             await interaction.response.send_message("❌ Invalid number!", ephemeral=True)
 
 # =========================
-# IMAGE VIEW (FIXED - SINGLE CLASS ONLY)
+# VIEW
 # =========================
-class ImageView(ui.View):
+class ImageView(discord.ui.View):
     def __init__(self, message_id):
         super().__init__(timeout=None)
         self.message_id = message_id
+
+    async def already_used(self, interaction):
+        if self.message_id in used_images:
+            await interaction.response.send_message("❌ Already used!", ephemeral=True)
+            return True
+        return False
 
     async def interaction_check(self, interaction: discord.Interaction):
         if not any(role.id == ALLOWED_ROLE_ID for role in interaction.user.roles):
@@ -178,86 +177,61 @@ class ImageView(ui.View):
 
         return True
 
-    async def already_used(self, interaction):
-        if self.message_id in used_images:
-            await interaction.response.send_message("❌ Already used!", ephemeral=True)
-            return True
-        return False
-
-    async def use_button(self, interaction, size):
-        used_images.add(self.message_id)
-
-        self.clear_items()
-        await interaction.response.edit_message(view=self)
-
-        await interaction.followup.send_modal(AddModal(size, self.message_id))
-
     @discord.ui.button(label="Mini", style=discord.ButtonStyle.success)
-    async def mini(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def mini(self, interaction, button):
         if await self.already_used(interaction):
             return
-        await self.use_button(interaction, "Mini")
+        await interaction.response.send_modal(AddModal("Mini", self.message_id))
 
     @discord.ui.button(label="Small", style=discord.ButtonStyle.primary)
-    async def small(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def small(self, interaction, button):
         if await self.already_used(interaction):
             return
-        await self.use_button(interaction, "Small")
+        await interaction.response.send_modal(AddModal("Small", self.message_id))
 
     @discord.ui.button(label="Mediant", style=discord.ButtonStyle.secondary)
-    async def mediant(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def mediant(self, interaction, button):
         if await self.already_used(interaction):
             return
-        await self.use_button(interaction, "Mediant")
+        await interaction.response.send_modal(AddModal("Mediant", self.message_id))
 
     @discord.ui.button(label="Vast", style=discord.ButtonStyle.danger)
-    async def vast(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def vast(self, interaction, button):
         if await self.already_used(interaction):
             return
-        await self.use_button(interaction, "Vast")
+        await interaction.response.send_modal(AddModal("Vast", self.message_id))
 
 # =========================
-# MESSAGE EVENT
+# EVENTS
 # =========================
 @client.event
 async def on_message(message):
-    global counter, mini_count, small_count, mediant_count, vast_count
-
     if message.author.bot:
         return
 
     if message.channel.id != ALLOWED_CHANNEL_ID:
         return
 
-    # prevent duplicate processing
-    if message.id in used_images:
-        return
-
     if message.attachments:
         for att in message.attachments:
             if att.content_type and att.content_type.startswith("image"):
-
                 await message.reply(
                     "🖼️ Image detected — choose option:",
                     view=ImageView(message.id)
                 )
 
-                await update_live_board(message.channel)
-
     if message.content.startswith("!clear"):
         if message.author.id != OWNER_ID:
             return await message.reply("❌ Owner only!")
 
+        global counter, mini_count, small_count, mediant_count, vast_count
+
         counter = 0
         mini_count = small_count = mediant_count = vast_count = 0
+
         save_counter()
-
         await message.channel.send("🧹 Counter reset!")
-        await update_live_board(message.channel)
 
-# =========================
-# READY
-# =========================
 @client.event
 async def on_ready():
     load_counter()
@@ -266,10 +240,5 @@ async def on_ready():
 # =========================
 # START
 # =========================
-TOKEN = os.getenv("TOKEN")
-
-if TOKEN is None:
-    raise Exception("❌ TOKEN is missing! Set it in environment variables.")
-
 keep_alive()
 client.run(TOKEN)
