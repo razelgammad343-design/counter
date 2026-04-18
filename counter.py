@@ -3,8 +3,12 @@ import json
 from flask import Flask
 from threading import Thread
 import traceback
+import os
 
-TOKEN = "YOUR_BOT_TOKEN"
+# =========================
+# CONFIG
+# =========================
+TOKEN = os.getenv("TOKEN")  # ✅ FIXED
 
 ALLOWED_CHANNEL_ID = 1467897643471732980
 ALLOWED_ROLE_ID = 1466987521987711047
@@ -29,7 +33,7 @@ def home():
     return "Bot is alive!"
 
 def run():
-    app.run(host="0.0.0.0", port=8080)
+    app.run(host="0.0.0.0", port=8080, debug=False)
 
 def keep_alive():
     Thread(target=run, daemon=True).start()
@@ -40,7 +44,10 @@ def keep_alive():
 counter = 0
 used_images = set()
 
-mini_count = small_count = mediant_count = vast_count = 0
+mini_count = 0
+small_count = 0
+mediant_count = 0
+vast_count = 0
 
 # =========================
 # SAVE / LOAD
@@ -82,15 +89,12 @@ def save_counter():
 async def send_live_log(channel, user, pack, value):
     try:
         embed = discord.Embed(
-            title="📊 LIVE COUNTER LOG",
+            title="📊 Counter Update",
+            description=f"✅ {user.mention} added **{value}** to **{pack}**",
             color=discord.Color.green()
         )
 
-        embed.add_field(name="👤 User", value=user.mention, inline=True)
-        embed.add_field(name="📦 Type", value=pack, inline=True)
-        embed.add_field(name="➕ Added", value=str(value), inline=True)
-
-        embed.add_field(name="📊 Total Counter", value=str(counter), inline=False)
+        embed.add_field(name="📊 Total", value=f"**{counter}**", inline=False)
 
         embed.add_field(
             name="📦 Breakdown",
@@ -126,6 +130,15 @@ class AddModal(discord.ui.Modal):
         try:
             value = int(self.number.value)
 
+            # ✅ prevent duplicate per user per image
+            key = f"{self.message_id}-{interaction.user.id}"
+            if key in used_images:
+                return await interaction.response.send_message(
+                    "❌ You already used this image!", ephemeral=True
+                )
+
+            used_images.add(key)
+
             counter += value
 
             if self.pack == "Mini":
@@ -137,18 +150,16 @@ class AddModal(discord.ui.Modal):
             elif self.pack == "Vast":
                 vast_count += value
 
-            used_images.add(self.message_id)
             save_counter()
 
-            await interaction.response.defer()
-
-            await interaction.followup.send(
-                f"✅ {interaction.user.mention} added **{value}** to **{self.pack}**!"
+            await interaction.response.send_message(
+                f"✅ Added **{value}** to **{self.pack}**!",
+                ephemeral=True
             )
 
             await send_live_log(interaction.channel, interaction.user, self.pack, value)
 
-        except Exception:
+        except:
             print(traceback.format_exc())
             await interaction.response.send_message("❌ Invalid number!", ephemeral=True)
 
@@ -159,12 +170,6 @@ class ImageView(discord.ui.View):
     def __init__(self, message_id):
         super().__init__(timeout=None)
         self.message_id = message_id
-
-    async def already_used(self, interaction):
-        if self.message_id in used_images:
-            await interaction.response.send_message("❌ Already used!", ephemeral=True)
-            return True
-        return False
 
     async def interaction_check(self, interaction: discord.Interaction):
         if not any(role.id == ALLOWED_ROLE_ID for role in interaction.user.roles):
@@ -179,26 +184,18 @@ class ImageView(discord.ui.View):
 
     @discord.ui.button(label="Mini", style=discord.ButtonStyle.success)
     async def mini(self, interaction, button):
-        if await self.already_used(interaction):
-            return
         await interaction.response.send_modal(AddModal("Mini", self.message_id))
 
     @discord.ui.button(label="Small", style=discord.ButtonStyle.primary)
     async def small(self, interaction, button):
-        if await self.already_used(interaction):
-            return
         await interaction.response.send_modal(AddModal("Small", self.message_id))
 
     @discord.ui.button(label="Mediant", style=discord.ButtonStyle.secondary)
     async def mediant(self, interaction, button):
-        if await self.already_used(interaction):
-            return
         await interaction.response.send_modal(AddModal("Mediant", self.message_id))
 
     @discord.ui.button(label="Vast", style=discord.ButtonStyle.danger)
     async def vast(self, interaction, button):
-        if await self.already_used(interaction):
-            return
         await interaction.response.send_modal(AddModal("Vast", self.message_id))
 
 # =========================
@@ -227,7 +224,11 @@ async def on_message(message):
         global counter, mini_count, small_count, mediant_count, vast_count
 
         counter = 0
-        mini_count = small_count = mediant_count = vast_count = 0
+        mini_count = 0
+        small_count = 0
+        mediant_count = 0
+        vast_count = 0
+        used_images.clear()
 
         save_counter()
         await message.channel.send("🧹 Counter reset!")
@@ -235,6 +236,10 @@ async def on_message(message):
 @client.event
 async def on_ready():
     load_counter()
+
+    # ✅ persistent buttons fix
+    client.add_view(ImageView(message_id=0))
+
     print(f"Logged in as {client.user}")
 
 # =========================
