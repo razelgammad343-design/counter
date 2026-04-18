@@ -5,6 +5,7 @@ from flask import Flask
 from threading import Thread
 import traceback
 import os
+import asyncio
 
 # =========================
 # CONFIG
@@ -50,6 +51,9 @@ vast_count = 0
 
 live_message_id = None
 
+# lock system (prevents double click abuse)
+image_locks = {}
+
 # =========================
 # SAVE / LOAD
 # =========================
@@ -68,7 +72,6 @@ def load_counter():
             small_count = data.get("small", 0)
             mediant_count = data.get("mediant", 0)
             vast_count = data.get("vast", 0)
-
     except:
         pass
 
@@ -131,8 +134,7 @@ class AddModal(ui.Modal):
     number = ui.TextInput(label="Enter number")
 
     async def on_submit(self, interaction: discord.Interaction):
-        global counter
-        global mini_count, small_count, mediant_count, vast_count
+        global counter, mini_count, small_count, mediant_count, vast_count
 
         try:
             value = int(self.number.value)
@@ -151,58 +153,18 @@ class AddModal(ui.Modal):
             used_images.add(self.message_id)
             save_counter()
 
-            await interaction.response.defer()
-
-            await interaction.followup.send(
+            await interaction.response.send_message(
                 f"✅ {interaction.user.mention} added **{value}** to **{self.pack}**!"
             )
 
             await update_live_board(interaction.channel)
 
-        except Exception:
+        except:
             print(traceback.format_exc())
             await interaction.response.send_message("❌ Invalid number!", ephemeral=True)
 
 # =========================
 # VIEW
-# =========================
-class ImageView(ui.View):
-    def __init__(self, message_id):
-        super().__init__(timeout=None)
-        self.message_id = message_id
-
-    async def interaction_check(self, interaction: discord.Interaction):
-        if not any(role.id == ALLOWED_ROLE_ID for role in interaction.user.roles):
-            await interaction.response.send_message(
-                "❌ No permission!", ephemeral=True
-            )
-            return False
-
-        if interaction.channel.id != ALLOWED_CHANNEL_ID:
-            await interaction.response.send_message(
-                "❌ Wrong channel!", ephemeral=True
-            )
-            return False
-
-        return True
-
-    async def use_button(self, interaction, size):
-        # Mark image as used
-        used_images.add(self.message_id)
-
-        # Remove all buttons
-        self.clear_items()
-
-        # Update message so buttons disappear
-        await interaction.response.edit_message(view=self)
-
-        # Open modal after removing buttons
-        await interaction.followup.send_modal(
-            AddModal(size, self.message_id)
-        )
-
-# =========================
-# VIEW (BUTTONS)
 # =========================
 class ImageView(ui.View):
     def __init__(self, message_id):
@@ -220,53 +182,45 @@ class ImageView(ui.View):
 
         return True
 
-    async def already_used(self, interaction: discord.Interaction):
-        if self.message_id in used_images:
-            await interaction.response.send_message(
-                "❌ This image was already processed!", ephemeral=True
-            )
-            return True
-        return False
-
     async def use_button(self, interaction, size):
-        # prevent double usage
-        if self.message_id in used_images:
-            await interaction.response.send_message("❌ Already used!", ephemeral=True)
-            return
 
-        used_images.add(self.message_id)
+        # LOCK (prevents double click spam)
+        if image_locks.get(self.message_id):
+            return await interaction.response.send_message("❌ Already processing!", ephemeral=True)
 
-        # remove buttons instantly
-        self.clear_items()
-        await interaction.response.edit_message(view=self)
+        image_locks[self.message_id] = True
 
-        # open modal after update
-        await interaction.followup.send_modal(AddModal(size, self.message_id))
+        try:
+            if self.message_id in used_images:
+                return await interaction.response.send_message("❌ Already processed!", ephemeral=True)
+
+            used_images.add(self.message_id)
+
+            self.clear_items()
+            await interaction.response.edit_message(view=self)
+
+            await interaction.followup.send_modal(AddModal(size, self.message_id))
+
+        finally:
+            await asyncio.sleep(1)
+            image_locks.pop(self.message_id, None)
 
     @discord.ui.button(label="Mini", style=discord.ButtonStyle.success)
-    async def mini(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if await self.already_used(interaction):
-            return
+    async def mini(self, interaction, button):
         await self.use_button(interaction, "Mini")
 
     @discord.ui.button(label="Small", style=discord.ButtonStyle.primary)
-    async def small(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if await self.already_used(interaction):
-            return
+    async def small(self, interaction, button):
         await self.use_button(interaction, "Small")
 
     @discord.ui.button(label="Mediant", style=discord.ButtonStyle.secondary)
-    async def mediant(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if await self.already_used(interaction):
-            return
+    async def mediant(self, interaction, button):
         await self.use_button(interaction, "Mediant")
 
     @discord.ui.button(label="Vast", style=discord.ButtonStyle.danger)
-    async def vast(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if await self.already_used(interaction):
-            return
+    async def vast(self, interaction, button):
         await self.use_button(interaction, "Vast")
-        
+
 # =========================
 # MESSAGE EVENT
 # =========================
@@ -284,29 +238,28 @@ async def on_message(message):
     if message.attachments:
         for att in message.attachments:
             if att.content_type and att.content_type.startswith("image"):
-
-                await message.reply(
-                    "🖼️ Image detected — choose option:",
-                    view=ImageView(message.id)
-                )
-
+                await message.reply("🖼️ Choose option:", view=ImageView(message.id))
                 await update_live_board(message.channel)
 
-    # RESET
+    # RESET COMMAND
     if message.content.startswith("!clear"):
         if message.author.id != OWNER_ID:
             return await message.reply("❌ Owner only!")
 
         counter = 0
-        mini_count = small_count = mediant_count = vast_count = 0
+        mini_count = 0
+        small_count = 0
+        mediant_count = 0
+        vast_count = 0
 
+        used_images.clear()
         save_counter()
-        await message.channel.send("🧹 Counter reset!")
 
+        await message.channel.send("🧹 Reset done!")
         await update_live_board(message.channel)
 
 # =========================
-# READY
+# READY EVENT
 # =========================
 @client.event
 async def on_ready():
@@ -319,7 +272,7 @@ async def on_ready():
 TOKEN = os.getenv("TOKEN")
 
 if TOKEN is None:
-    raise Exception("❌ TOKEN is missing! Set it in environment variables.")
+    raise Exception("❌ TOKEN is missing!")
 
 keep_alive()
 client.run(TOKEN)
