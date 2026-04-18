@@ -2,6 +2,7 @@ import discord
 import json
 from flask import Flask
 from threading import Thread
+import traceback
 
 TOKEN = "YOUR_BOT_TOKEN"
 
@@ -31,7 +32,7 @@ def run():
     app.run(host="0.0.0.0", port=8080)
 
 def keep_alive():
-    Thread(target=run).start()
+    Thread(target=run, daemon=True).start()
 
 # =========================
 # DATA
@@ -140,17 +141,16 @@ class AddModal(discord.ui.Modal):
 
             channel = interaction.channel
 
-            # ✅ FIXED: PUBLIC MESSAGE (VISIBLE TO EVERYONE)
             await interaction.response.defer()
 
             await interaction.followup.send(
                 f"✅ {interaction.user.mention} added **{value}** to **{self.pack}**!"
             )
 
-            # LIVE LOG
             await send_live_log(channel, interaction.user, self.pack, value)
 
-        except:
+        except Exception as e:
+            print(traceback.format_exc())
             await interaction.response.send_message("❌ Invalid number!", ephemeral=True)
 
 # =========================
@@ -166,6 +166,17 @@ class ImageView(discord.ui.View):
             await interaction.response.send_message("❌ Already used!", ephemeral=True)
             return True
         return False
+
+    async def interaction_check(self, interaction: discord.Interaction):
+        if not any(role.id == ALLOWED_ROLE_ID for role in interaction.user.roles):
+            await interaction.response.send_message("❌ No permission!", ephemeral=True)
+            return False
+
+        if interaction.channel.id != ALLOWED_CHANNEL_ID:
+            await interaction.response.send_message("❌ Wrong channel!", ephemeral=True)
+            return False
+
+        return True
 
     @discord.ui.button(label="Mini", style=discord.ButtonStyle.success)
     async def mini(self, interaction, button):
@@ -199,17 +210,17 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # IMAGE DETECT
+    if message.channel.id != ALLOWED_CHANNEL_ID:
+        return
+
     if message.attachments:
         for att in message.attachments:
             if att.content_type and att.content_type.startswith("image"):
-
                 await message.reply(
                     "🖼️ Image detected — choose option:",
                     view=ImageView(message.id)
                 )
 
-    # RESET COMMAND
     if message.content.startswith("!clear"):
         if message.author.id != OWNER_ID:
             return await message.reply("❌ Owner only!")
@@ -231,7 +242,7 @@ async def on_ready():
     print(f"Logged in as {client.user}")
 
 # =========================
-# START BOT
+# START
 # =========================
 keep_alive()
 client.run(TOKEN)
