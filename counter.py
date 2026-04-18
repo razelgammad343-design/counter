@@ -211,33 +211,37 @@ class ImageView(ui.View):
 
     async def interaction_check(self, interaction: discord.Interaction):
         if not any(role.id == ALLOWED_ROLE_ID for role in interaction.user.roles):
-            await interaction.response.send_message(
-                "❌ No permission!", ephemeral=True
-            )
+            await interaction.response.send_message("❌ No permission!", ephemeral=True)
             return False
 
         if interaction.channel.id != ALLOWED_CHANNEL_ID:
-            await interaction.response.send_message(
-                "❌ Wrong channel!", ephemeral=True
-            )
+            await interaction.response.send_message("❌ Wrong channel!", ephemeral=True)
             return False
 
         return True
 
+    async def already_used(self, interaction: discord.Interaction):
+        if self.message_id in used_images:
+            await interaction.response.send_message(
+                "❌ This image was already processed!", ephemeral=True
+            )
+            return True
+        return False
+
     async def use_button(self, interaction, size):
-        # Mark image as used
+        # prevent double usage
+        if self.message_id in used_images:
+            await interaction.response.send_message("❌ Already used!", ephemeral=True)
+            return
+
         used_images.add(self.message_id)
 
-        # Remove all buttons
+        # remove buttons instantly
         self.clear_items()
-
-        # Update message so buttons disappear
         await interaction.response.edit_message(view=self)
 
-        # Open modal after removing buttons
-        await interaction.followup.send_modal(
-            AddModal(size, self.message_id)
-        )
+        # open modal after update
+        await interaction.followup.send_modal(AddModal(size, self.message_id))
 
     @discord.ui.button(label="Mini", style=discord.ButtonStyle.success)
     async def mini(self, interaction: discord.Interaction, button: discord.ui.Button):
