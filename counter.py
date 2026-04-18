@@ -154,7 +154,7 @@ class AddModal(discord.ui.Modal):
 
             await interaction.response.send_message(
                 f"✅ Added **{value}** to **{self.pack}**!",
-                
+                ephemeral=True
             )
 
             await send_live_log(interaction.channel, interaction.user, self.pack, value)
