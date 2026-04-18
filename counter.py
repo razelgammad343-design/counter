@@ -1,14 +1,14 @@
 import discord
+from discord import ui
 import json
 from flask import Flask
 from threading import Thread
 import traceback
+import os
 
 # =========================
 # CONFIG
 # =========================
-TOKEN = "YOUR_BOT_TOKEN"
-
 ALLOWED_CHANNEL_ID = 1467897643471732980
 ALLOWED_ROLE_ID = 1466987521987711047
 OWNER_ID = 923096413934616596
@@ -32,7 +32,7 @@ def home():
     return "Bot is alive!"
 
 def run():
-    app.run(host="0.0.0.0", port=8080)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 
 def keep_alive():
     Thread(target=run, daemon=True).start()
@@ -85,7 +85,7 @@ def save_counter():
         }, f)
 
 # =========================
-# LIVE BOARD (UPDATED MESSAGE)
+# LIVE BOARD
 # =========================
 async def update_live_board(channel):
     global live_message_id
@@ -122,13 +122,13 @@ async def update_live_board(channel):
 # =========================
 # MODAL
 # =========================
-class AddModal(discord.ui.Modal):
+class AddModal(ui.Modal):
     def __init__(self, pack, message_id):
         super().__init__(title=f"{pack} Input")
         self.pack = pack
         self.message_id = message_id
 
-    number = discord.ui.TextInput(label="Enter number")
+    number = ui.TextInput(label="Enter number")
 
     async def on_submit(self, interaction: discord.Interaction):
         global counter
@@ -159,13 +159,14 @@ class AddModal(discord.ui.Modal):
 
             await update_live_board(interaction.channel)
 
-        except:
+        except Exception:
+            print(traceback.format_exc())
             await interaction.response.send_message("❌ Invalid number!", ephemeral=True)
 
 # =========================
-# VIEW (BUTTONS)
+# VIEW
 # =========================
-class ImageView(discord.ui.View):
+class ImageView(ui.View):
     def __init__(self, message_id):
         super().__init__(timeout=None)
         self.message_id = message_id
@@ -187,25 +188,25 @@ class ImageView(discord.ui.View):
 
         return True
 
-    @discord.ui.button(label="Mini", style=discord.ButtonStyle.success)
+    @ui.button(label="Mini", style=discord.ButtonStyle.success)
     async def mini(self, interaction, button):
         if await self.already_used(interaction):
             return
         await interaction.response.send_modal(AddModal("Mini", self.message_id))
 
-    @discord.ui.button(label="Small", style=discord.ButtonStyle.primary)
+    @ui.button(label="Small", style=discord.ButtonStyle.primary)
     async def small(self, interaction, button):
         if await self.already_used(interaction):
             return
         await interaction.response.send_modal(AddModal("Small", self.message_id))
 
-    @discord.ui.button(label="Mediant", style=discord.ButtonStyle.secondary)
+    @ui.button(label="Mediant", style=discord.ButtonStyle.secondary)
     async def mediant(self, interaction, button):
         if await self.already_used(interaction):
             return
         await interaction.response.send_modal(AddModal("Mediant", self.message_id))
 
-    @discord.ui.button(label="Vast", style=discord.ButtonStyle.danger)
+    @ui.button(label="Vast", style=discord.ButtonStyle.danger)
     async def vast(self, interaction, button):
         if await self.already_used(interaction):
             return
@@ -236,7 +237,7 @@ async def on_message(message):
 
                 await update_live_board(message.channel)
 
-    # RESET COMMAND
+    # RESET
     if message.content.startswith("!clear"):
         if message.author.id != OWNER_ID:
             return await message.reply("❌ Owner only!")
@@ -250,7 +251,7 @@ async def on_message(message):
         await update_live_board(message.channel)
 
 # =========================
-# READY EVENT
+# READY
 # =========================
 @client.event
 async def on_ready():
@@ -260,5 +261,10 @@ async def on_ready():
 # =========================
 # START BOT
 # =========================
+TOKEN = os.getenv("TOKEN")
+
+if TOKEN is None:
+    raise Exception("❌ TOKEN is missing! Set it in environment variables.")
+
 keep_alive()
 client.run(TOKEN)
