@@ -171,46 +171,51 @@ class ImageView(ui.View):
         super().__init__(timeout=None)
         self.message_id = message_id
 
-    async def already_used(self, interaction):
-        if self.message_id in used_images:
-            await interaction.response.send_message("❌ Already used!", ephemeral=True)
-            return True
-        return False
-
     async def interaction_check(self, interaction: discord.Interaction):
         if not any(role.id == ALLOWED_ROLE_ID for role in interaction.user.roles):
-            await interaction.response.send_message("❌ No permission!", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ No permission!", ephemeral=True
+            )
             return False
 
         if interaction.channel.id != ALLOWED_CHANNEL_ID:
-            await interaction.response.send_message("❌ Wrong channel!", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Wrong channel!", ephemeral=True
+            )
             return False
 
         return True
 
+    async def use_button(self, interaction, size):
+        # Mark image as used
+        used_images.add(self.message_id)
+
+        # Remove all buttons
+        self.clear_items()
+
+        # Update message so buttons disappear
+        await interaction.response.edit_message(view=self)
+
+        # Open modal after removing buttons
+        await interaction.followup.send_modal(
+            AddModal(size, self.message_id)
+        )
+
     @ui.button(label="Mini", style=discord.ButtonStyle.success)
     async def mini(self, interaction, button):
-        if await self.already_used(interaction):
-            return
-        await interaction.response.send_modal(AddModal("Mini", self.message_id))
+        await self.use_button(interaction, "Mini")
 
     @ui.button(label="Small", style=discord.ButtonStyle.primary)
     async def small(self, interaction, button):
-        if await self.already_used(interaction):
-            return
-        await interaction.response.send_modal(AddModal("Small", self.message_id))
+        await self.use_button(interaction, "Small")
 
     @ui.button(label="Mediant", style=discord.ButtonStyle.secondary)
     async def mediant(self, interaction, button):
-        if await self.already_used(interaction):
-            return
-        await interaction.response.send_modal(AddModal("Mediant", self.message_id))
+        await self.use_button(interaction, "Mediant")
 
     @ui.button(label="Vast", style=discord.ButtonStyle.danger)
     async def vast(self, interaction, button):
-        if await self.already_used(interaction):
-            return
-        await interaction.response.send_modal(AddModal("Vast", self.message_id))
+        await self.use_button(interaction, "Vast")
 
 # =========================
 # MESSAGE EVENT
