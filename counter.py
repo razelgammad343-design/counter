@@ -40,7 +40,10 @@ def keep_alive():
 counter = 0
 used_images = set()
 
-mini_count = small_count = mediant_count = vast_count = 0
+mini_count = 0
+small_count = 0
+mediant_count = 0
+vast_count = 0
 
 # =========================
 # SAVE / LOAD
@@ -80,33 +83,29 @@ def save_counter():
 # LIVE LOG
 # =========================
 async def send_live_log(channel, user, pack, value):
-    try:
-        embed = discord.Embed(
-            title="📊 LIVE COUNTER LOG",
-            color=discord.Color.green()
-        )
+    embed = discord.Embed(
+        title="📊 LIVE COUNTER LOG",
+        color=discord.Color.green()
+    )
 
-        embed.add_field(name="👤 User", value=user.mention, inline=True)
-        embed.add_field(name="📦 Type", value=pack, inline=True)
-        embed.add_field(name="➕ Added", value=str(value), inline=True)
+    embed.add_field(name="👤 User", value=user.mention, inline=True)
+    embed.add_field(name="📦 Type", value=pack, inline=True)
+    embed.add_field(name="➕ Added", value=str(value), inline=True)
 
-        embed.add_field(name="📊 Total Counter", value=str(counter), inline=False)
+    embed.add_field(name="📊 Total Counter", value=str(counter), inline=False)
 
-        embed.add_field(
-            name="📦 Breakdown",
-            value=(
-                f"🟢 Mini: {mini_count}\n"
-                f"🔵 Small: {small_count}\n"
-                f"🟡 Mediant: {mediant_count}\n"
-                f"🔴 Vast: {vast_count}"
-            ),
-            inline=False
-        )
+    embed.add_field(
+        name="📦 Breakdown",
+        value=(
+            f"🟢 Mini: {mini_count}\n"
+            f"🔵 Small: {small_count}\n"
+            f"🟡 Mediant: {mediant_count}\n"
+            f"🔴 Vast: {vast_count}"
+        ),
+        inline=False
+    )
 
-        await channel.send(embed=embed)
-
-    except:
-        print("⚠️ Failed to send live log")
+    await channel.send(embed=embed)
 
 # =========================
 # MODAL
@@ -140,15 +139,17 @@ class AddModal(discord.ui.Modal):
             used_images.add(self.message_id)
             save_counter()
 
+            channel = interaction.channel
+
             await interaction.response.defer()
 
             await interaction.followup.send(
                 f"✅ {interaction.user.mention} added **{value}** to **{self.pack}**!"
             )
 
-            await send_live_log(interaction.channel, interaction.user, self.pack, value)
+            await send_live_log(channel, interaction.user, self.pack, value)
 
-        except Exception:
+        except Exception as e:
             print(traceback.format_exc())
             await interaction.response.send_message("❌ Invalid number!", ephemeral=True)
 
@@ -202,7 +203,7 @@ class ImageView(discord.ui.View):
         await interaction.response.send_modal(AddModal("Vast", self.message_id))
 
 # =========================
-# EVENTS
+# MESSAGE EVENT
 # =========================
 @client.event
 async def on_message(message):
@@ -232,6 +233,9 @@ async def on_message(message):
         save_counter()
         await message.channel.send("🧹 Counter reset!")
 
+# =========================
+# READY
+# =========================
 @client.event
 async def on_ready():
     load_counter()
