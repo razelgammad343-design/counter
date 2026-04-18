@@ -4,6 +4,9 @@ from flask import Flask
 from threading import Thread
 import traceback
 
+# =========================
+# CONFIG
+# =========================
 TOKEN = "YOUR_BOT_TOKEN"
 
 ALLOWED_CHANNEL_ID = 1467897643471732980
@@ -45,6 +48,8 @@ small_count = 0
 mediant_count = 0
 vast_count = 0
 
+live_message_id = None
+
 # =========================
 # SAVE / LOAD
 # =========================
@@ -80,17 +85,15 @@ def save_counter():
         }, f)
 
 # =========================
-# LIVE LOG
+# LIVE BOARD (UPDATED MESSAGE)
 # =========================
-async def send_live_log(channel, user, pack, value):
+async def update_live_board(channel):
+    global live_message_id
+
     embed = discord.Embed(
-        title="📊 LIVE COUNTER LOG",
+        title="📊 LIVE COUNTER BOARD",
         color=discord.Color.green()
     )
-
-    embed.add_field(name="👤 User", value=user.mention, inline=True)
-    embed.add_field(name="📦 Type", value=pack, inline=True)
-    embed.add_field(name="➕ Added", value=str(value), inline=True)
 
     embed.add_field(name="📊 Total Counter", value=str(counter), inline=False)
 
@@ -105,7 +108,16 @@ async def send_live_log(channel, user, pack, value):
         inline=False
     )
 
-    await channel.send(embed=embed)
+    if live_message_id:
+        try:
+            msg = await channel.fetch_message(live_message_id)
+            await msg.edit(embed=embed)
+            return
+        except:
+            pass
+
+    msg = await channel.send(embed=embed)
+    live_message_id = msg.id
 
 # =========================
 # MODAL
@@ -139,22 +151,19 @@ class AddModal(discord.ui.Modal):
             used_images.add(self.message_id)
             save_counter()
 
-            channel = interaction.channel
-
             await interaction.response.defer()
 
             await interaction.followup.send(
                 f"✅ {interaction.user.mention} added **{value}** to **{self.pack}**!"
             )
 
-            await send_live_log(channel, interaction.user, self.pack, value)
+            await update_live_board(interaction.channel)
 
-        except Exception as e:
-            print(traceback.format_exc())
+        except:
             await interaction.response.send_message("❌ Invalid number!", ephemeral=True)
 
 # =========================
-# VIEW
+# VIEW (BUTTONS)
 # =========================
 class ImageView(discord.ui.View):
     def __init__(self, message_id):
@@ -207,25 +216,30 @@ class ImageView(discord.ui.View):
 # =========================
 @client.event
 async def on_message(message):
+    global counter, mini_count, small_count, mediant_count, vast_count
+
     if message.author.bot:
         return
 
     if message.channel.id != ALLOWED_CHANNEL_ID:
         return
 
+    # IMAGE DETECTION
     if message.attachments:
         for att in message.attachments:
             if att.content_type and att.content_type.startswith("image"):
+
                 await message.reply(
                     "🖼️ Image detected — choose option:",
                     view=ImageView(message.id)
                 )
 
+                await update_live_board(message.channel)
+
+    # RESET COMMAND
     if message.content.startswith("!clear"):
         if message.author.id != OWNER_ID:
             return await message.reply("❌ Owner only!")
-
-        global counter, mini_count, small_count, mediant_count, vast_count
 
         counter = 0
         mini_count = small_count = mediant_count = vast_count = 0
@@ -233,8 +247,10 @@ async def on_message(message):
         save_counter()
         await message.channel.send("🧹 Counter reset!")
 
+        await update_live_board(message.channel)
+
 # =========================
-# READY
+# READY EVENT
 # =========================
 @client.event
 async def on_ready():
@@ -242,7 +258,7 @@ async def on_ready():
     print(f"Logged in as {client.user}")
 
 # =========================
-# START
+# START BOT
 # =========================
 keep_alive()
 client.run(TOKEN)
