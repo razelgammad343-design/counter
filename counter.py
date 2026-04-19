@@ -119,9 +119,10 @@ async def send_live_log(channel, user, pack, value):
 # MODAL
 # =========================
 class AddModal(discord.ui.Modal):
-    def __init__(self, pack):
+    def __init__(self, pack, message_id):
         super().__init__(title=f"{pack} Input")
         self.pack = pack
+        self.message_id = message_id
 
     number = discord.ui.TextInput(label="Enter number")
 
@@ -132,7 +133,7 @@ class AddModal(discord.ui.Modal):
         try:
             value = int(self.number.value)
 
-            key = f"{interaction.message.id}-{interaction.user.id}"
+            key = f"{self.message_id}-{interaction.user.id}"
 
             if key in used_images:
                 return await interaction.response.send_message(
@@ -167,47 +168,51 @@ class AddModal(discord.ui.Modal):
             await interaction.response.send_message("❌ Invalid number!", ephemeral=True)
 
 # =========================
-# VIEW
+# VIEW (FIXED: ONLY UPLOADER CAN USE)
 # =========================
 class ImageView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, uploader_id, message_id):
         super().__init__(timeout=None)
+        self.uploader_id = uploader_id
+        self.message_id = message_id
 
     async def interaction_check(self, interaction: discord.Interaction):
-        key = f"{interaction.message.id}-{interaction.user.id}"
 
-        if key in used_images:
+        # ❌ ONLY uploader can use buttons
+        if interaction.user.id != self.uploader_id:
             await interaction.response.send_message(
-                "❌ You already used this image (one-time only)!",
+                "❌ Only the uploader of this image can use the buttons!",
                 ephemeral=True
             )
             return False
 
-        if not hasattr(interaction.user, "roles") or not any(role.id == ALLOWED_ROLE_ID for role in interaction.user.roles):
+        # ❌ role check
+        if not any(role.id == ALLOWED_ROLE_ID for role in interaction.user.roles):
             await interaction.response.send_message("❌ No permission!", ephemeral=True)
             return False
 
+        # ❌ channel check
         if interaction.channel.id != ALLOWED_CHANNEL_ID:
             await interaction.response.send_message("❌ Wrong channel!", ephemeral=True)
             return False
 
         return True
 
-    @discord.ui.button(label="Mini", style=discord.ButtonStyle.success, custom_id="mini_btn")
+    @discord.ui.button(label="Mini", style=discord.ButtonStyle.success)
     async def mini(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(AddModal("Mini"))
+        await interaction.response.send_modal(AddModal("Mini", self.message_id))
 
-    @discord.ui.button(label="Small", style=discord.ButtonStyle.primary, custom_id="small_btn")
+    @discord.ui.button(label="Small", style=discord.ButtonStyle.primary)
     async def small(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(AddModal("Small"))
+        await interaction.response.send_modal(AddModal("Small", self.message_id))
 
-    @discord.ui.button(label="Mediant", style=discord.ButtonStyle.secondary, custom_id="mediant_btn")
+    @discord.ui.button(label="Mediant", style=discord.ButtonStyle.secondary)
     async def mediant(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(AddModal("Mediant"))
+        await interaction.response.send_modal(AddModal("Mediant", self.message_id))
 
-    @discord.ui.button(label="Vast", style=discord.ButtonStyle.danger, custom_id="vast_btn")
+    @discord.ui.button(label="Vast", style=discord.ButtonStyle.danger)
     async def vast(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(AddModal("Vast"))
+        await interaction.response.send_modal(AddModal("Vast", self.message_id))
 
 # =========================
 # EVENTS
@@ -221,10 +226,11 @@ async def on_message(message):
         return
 
     if message.attachments:
-        if any(att.content_type and att.content_type.startswith("image") for att in message.attachments):
+        if any(att.filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")) for att in message.attachments):
+
             await message.reply(
-                "🖼️ Image detected — choose option:",
-                view=ImageView()
+                "🖼️ Image detected — only uploader can use buttons:",
+                view=ImageView(message.author.id, message.id)
             )
 
     if message.content.startswith("!clear"):
@@ -246,9 +252,7 @@ async def on_message(message):
 @client.event
 async def on_ready():
     load_counter()
-
-    client.add_view(ImageView())
-
+    client.add_view(ImageView(0, 0))  # persistent dummy
     print(f"Logged in as {client.user}")
 
 # =========================
