@@ -8,7 +8,10 @@ import os
 # =========================
 # CONFIG
 # =========================
-TOKEN = os.getenv("TOKEN")  # ✅ FIXED
+TOKEN = os.getenv("TOKEN")
+
+if not TOKEN:
+    raise Exception("❌ TOKEN is missing! Set it in environment variables.")
 
 ALLOWED_CHANNEL_ID = 1467897643471732980
 ALLOWED_ROLE_ID = 1466987521987711047
@@ -33,7 +36,7 @@ def home():
     return "Bot is alive!"
 
 def run():
-    app.run(host="0.0.0.0", port=8080, debug=False)
+    app.run(host="0.0.0.0", port=8080, debug=False, use_reloader=False)
 
 def keep_alive():
     Thread(target=run, daemon=True).start()
@@ -116,10 +119,9 @@ async def send_live_log(channel, user, pack, value):
 # MODAL
 # =========================
 class AddModal(discord.ui.Modal):
-    def __init__(self, pack, message_id):
+    def __init__(self, pack):
         super().__init__(title=f"{pack} Input")
         self.pack = pack
-        self.message_id = message_id
 
     number = discord.ui.TextInput(label="Enter number")
 
@@ -130,11 +132,12 @@ class AddModal(discord.ui.Modal):
         try:
             value = int(self.number.value)
 
-            # ✅ prevent duplicate per user per image
-            key = f"{self.message_id}-{interaction.user.id}"
+            key = f"{interaction.message.id}-{interaction.user.id}"
+
             if key in used_images:
                 return await interaction.response.send_message(
-                    "❌ You already used this image!", ephemeral=True
+                    "❌ You already used this image!",
+                    ephemeral=True
                 )
 
             used_images.add(key)
@@ -167,12 +170,20 @@ class AddModal(discord.ui.Modal):
 # VIEW
 # =========================
 class ImageView(discord.ui.View):
-    def __init__(self, message_id):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.message_id = message_id
 
     async def interaction_check(self, interaction: discord.Interaction):
-        if not any(role.id == ALLOWED_ROLE_ID for role in interaction.user.roles):
+        key = f"{interaction.message.id}-{interaction.user.id}"
+
+        if key in used_images:
+            await interaction.response.send_message(
+                "❌ You already used this image (one-time only)!",
+                ephemeral=True
+            )
+            return False
+
+        if not hasattr(interaction.user, "roles") or not any(role.id == ALLOWED_ROLE_ID for role in interaction.user.roles):
             await interaction.response.send_message("❌ No permission!", ephemeral=True)
             return False
 
@@ -182,21 +193,21 @@ class ImageView(discord.ui.View):
 
         return True
 
-    @discord.ui.button(label="Mini", style=discord.ButtonStyle.success)
-    async def mini(self, interaction, button):
-        await interaction.response.send_modal(AddModal("Mini", self.message_id))
+    @discord.ui.button(label="Mini", style=discord.ButtonStyle.success, custom_id="mini_btn")
+    async def mini(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(AddModal("Mini"))
 
-    @discord.ui.button(label="Small", style=discord.ButtonStyle.primary)
-    async def small(self, interaction, button):
-        await interaction.response.send_modal(AddModal("Small", self.message_id))
+    @discord.ui.button(label="Small", style=discord.ButtonStyle.primary, custom_id="small_btn")
+    async def small(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(AddModal("Small"))
 
-    @discord.ui.button(label="Mediant", style=discord.ButtonStyle.secondary)
-    async def mediant(self, interaction, button):
-        await interaction.response.send_modal(AddModal("Mediant", self.message_id))
+    @discord.ui.button(label="Mediant", style=discord.ButtonStyle.secondary, custom_id="mediant_btn")
+    async def mediant(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(AddModal("Mediant"))
 
-    @discord.ui.button(label="Vast", style=discord.ButtonStyle.danger)
-    async def vast(self, interaction, button):
-        await interaction.response.send_modal(AddModal("Vast", self.message_id))
+    @discord.ui.button(label="Vast", style=discord.ButtonStyle.danger, custom_id="vast_btn")
+    async def vast(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(AddModal("Vast"))
 
 # =========================
 # EVENTS
@@ -210,12 +221,11 @@ async def on_message(message):
         return
 
     if message.attachments:
-        for att in message.attachments:
-            if att.content_type and att.content_type.startswith("image"):
-                await message.reply(
-                    "🖼️ Image detected — choose option:",
-                    view=ImageView(message.id)
-                )
+        if any(att.content_type and att.content_type.startswith("image") for att in message.attachments):
+            await message.reply(
+                "🖼️ Image detected — choose option:",
+                view=ImageView()
+            )
 
     if message.content.startswith("!clear"):
         if message.author.id != OWNER_ID:
@@ -237,8 +247,7 @@ async def on_message(message):
 async def on_ready():
     load_counter()
 
-    # ✅ persistent buttons fix
-    client.add_view(ImageView(message_id=0))
+    client.add_view(ImageView())
 
     print(f"Logged in as {client.user}")
 
