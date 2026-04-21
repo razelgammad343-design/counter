@@ -5,14 +5,36 @@ from threading import Thread
 import traceback
 import os
 
+import discord
+from discord.ext import commands
+from flask import Flask
+from threading import Thread
+import os
+
+# =====================
+# TOKEN
+# =====================
+token = os.getenv("TOKEN")
+
+# =====================
+# FLASK (KEEP ALIVE)
+# =====================
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is alive!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
 # =========================
 # CONFIG
 # =========================
-TOKEN = os.getenv("TOKEN")
-
-if not TOKEN:
-    raise Exception("❌ TOKEN is missing!")
-
 ALLOWED_CHANNEL_ID = 1467897643471732980
 ALLOWED_ROLE_ID = 1466987521987711047
 OWNER_ID = 923096413934616596
@@ -26,21 +48,6 @@ intents.members = True
 
 client = discord.Client(intents=intents)
 
-# =========================
-# FLASK KEEP ALIVE
-# =========================
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "I'm alive"
-
-def run():
-    app.run(host='0.0.0.0', port=10000)
-
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
 
 # =========================
 # DATA
@@ -244,8 +251,18 @@ async def on_ready():
     load_counter()
     print(f"Logged in as {client.user}")
 
-# =========================
+# =====================
+# DISCORD BOT
+# =====================
+intents = discord.Intents.default()
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+@bot.event
+async def on_ready():
+    print(f"✅ Logged in as {bot.user}")
+
+# =====================
 # START
-# =========================
+# =====================
 keep_alive()
-bot.run(TOKEN)
+bot.run(token)
