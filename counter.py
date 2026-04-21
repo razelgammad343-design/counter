@@ -1,14 +1,9 @@
 import discord
+from discord.ext import commands
 import json
 from flask import Flask
 from threading import Thread
 import traceback
-import os
-
-import discord
-from discord.ext import commands
-from flask import Flask
-from threading import Thread
 import os
 
 # =====================
@@ -46,8 +41,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-client = discord.Client(intents=intents)
-
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 # =========================
 # DATA
@@ -63,7 +57,6 @@ vast_count = 0
 # =========================
 def load_counter():
     global counter, mini_count, small_count, mediant_count, vast_count
-
     try:
         with open("data.json", "r") as f:
             data = json.load(f)
@@ -74,7 +67,6 @@ def load_counter():
             vast_count = data.get("vast", 0)
     except:
         pass
-
 
 def save_counter():
     with open("data.json", "w") as f:
@@ -111,7 +103,7 @@ async def send_live_log(channel, user, pack, value):
     await channel.send(embed=embed)
 
 # =========================
-# VIEW (CORE FIX)
+# VIEW
 # =========================
 class ImageView(discord.ui.View):
     def __init__(self, uploader_id):
@@ -120,7 +112,6 @@ class ImageView(discord.ui.View):
         self.used = False
 
     async def interaction_check(self, interaction: discord.Interaction):
-
         if self.used:
             await interaction.response.send_message("❌ Already used!", ephemeral=True)
             return False
@@ -139,53 +130,47 @@ class ImageView(discord.ui.View):
 
         return True
 
-    async def disable_all(self, interaction: discord.Interaction):
+    async def disable_all(self, interaction):
         self.used = True
-
         for item in self.children:
             item.disabled = True
-
         await interaction.message.edit(view=self)
 
     @discord.ui.button(label="Mini", style=discord.ButtonStyle.success)
-    async def mini(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def mini(self, interaction, button):
         await interaction.response.send_modal(AddModal("Mini", self))
 
     @discord.ui.button(label="Small", style=discord.ButtonStyle.primary)
-    async def small(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def small(self, interaction, button):
         await interaction.response.send_modal(AddModal("Small", self))
 
     @discord.ui.button(label="Mediant", style=discord.ButtonStyle.secondary)
-    async def mediant(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def mediant(self, interaction, button):
         await interaction.response.send_modal(AddModal("Mediant", self))
 
     @discord.ui.button(label="Vast", style=discord.ButtonStyle.danger)
-    async def vast(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def vast(self, interaction, button):
         await interaction.response.send_modal(AddModal("Vast", self))
 
 # =========================
 # MODAL
 # =========================
 class AddModal(discord.ui.Modal):
-    def __init__(self, pack, view: ImageView):
+    def __init__(self, pack, view):
         super().__init__(title=f"{pack} Input")
         self.pack = pack
         self.view = view
 
     number = discord.ui.TextInput(label="Enter number")
 
-    async def on_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction):
         global counter, mini_count, small_count, mediant_count, vast_count
 
         try:
             if self.view.used:
-                return await interaction.response.send_message(
-                    "❌ Already used!",
-                    ephemeral=True
-                )
+                return await interaction.response.send_message("❌ Already used!", ephemeral=True)
 
             value = int(self.number.value)
-
             counter += value
 
             if self.pack == "Mini":
@@ -199,14 +184,9 @@ class AddModal(discord.ui.Modal):
 
             save_counter()
 
-            await interaction.response.send_message(
-                f"✅ Added {value} to {self.pack}",
-                ephemeral=True
-            )
-
+            await interaction.response.send_message(f"✅ Added {value} to {self.pack}", ephemeral=True)
             await send_live_log(interaction.channel, interaction.user, self.pack, value)
 
-            # 🔥 Disable buttons safely
             await self.view.disable_all(interaction)
 
         except:
@@ -216,7 +196,12 @@ class AddModal(discord.ui.Modal):
 # =========================
 # EVENTS
 # =========================
-@client.event
+@bot.event
+async def on_ready():
+    load_counter()
+    print(f"✅ Logged in as {bot.user}")
+
+@bot.event
 async def on_message(message):
     if message.author.bot:
         return
@@ -245,21 +230,6 @@ async def on_message(message):
 
         save_counter()
         await message.channel.send("🧹 Reset done!")
-
-@client.event
-async def on_ready():
-    load_counter()
-    print(f"Logged in as {client.user}")
-
-# =====================
-# DISCORD BOT
-# =====================
-intents = discord.Intents.default()
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-@bot.event
-async def on_ready():
-    print(f"✅ Logged in as {bot.user}")
 
 # =====================
 # START
