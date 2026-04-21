@@ -29,17 +29,19 @@ client = discord.Client(intents=intents)
 # =========================
 # FLASK KEEP ALIVE
 # =========================
-app = Flask("")
+app = Flask('')
 
 @app.route("/")
 def home():
-    return "Bot is alive!"
+    return "Bot is running!"
 
 def run():
-    app.run(host="0.0.0.0", port=8080)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
-    Thread(target=run, daemon=True).start()
+    t = Thread(target=run)
+    t.start()
 
 # =========================
 # DATA
@@ -246,5 +248,7 @@ async def on_ready():
 # =========================
 # START
 # =========================
-keep_alive()
-client.run(TOKEN)
+if __name__ == "__main__":
+    keep_alive()
+    token = os.getenv("DISCORD_TOKEN")
+    bot.run(token)
