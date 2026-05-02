@@ -13,7 +13,8 @@ TOKEN = os.getenv("TOKEN")
 
 if not TOKEN:
     raise Exception("❌ TOKEN is missing!")
-
+GUILD_ID = 1409153710432452699  # 👈 replace with your server ID
+guild = discord.Object(id=GUILD_ID)
 CHANNEL_1 = 1467897643471732980
 CHANNEL_2 = 1499279455431032873
 
@@ -25,12 +26,16 @@ OWNER_ID = 923096413934616596
 # =========================
 # INTENTS
 # =========================
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
+class MyClient(discord.Client):
+    def __init__(self):
+        super().__init__(intents=intents)
+        self.tree = app_commands.CommandTree(self)
 
-client = discord.Client(intents=intents)
-tree = discord.app_commands.CommandTree(client)
+    async def setup_hook(self):
+        await self.tree.sync(guild=guild)  # 🔥 sync here instead of on_ready
+
+client = MyClient()
+tree = client.tree
 
 # =========================
 # FLASK KEEP ALIVE
@@ -327,12 +332,12 @@ async def on_message(message):
 # =========================
 # STATUS COMMAND
 # =========================
-
-@tree.command(name="status", description="Show Channel 2 status")
+@tree.command(name="status", description="Show Channel 2 status", guild=guild)
 async def status(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
 
     if interaction.channel.id != CHANNEL_2:
-        await interaction.response.send_message("❌ Use this in Channel 2 only!", ephemeral=True)
+        await interaction.followup.send("❌ Use this in Channel 2 only!")
         return
 
     ch = data["channel2"]
@@ -342,11 +347,7 @@ async def status(interaction: discord.Interaction):
         color=discord.Color.blue()
     )
 
-    embed.add_field(
-        name="📦 Total Counter",
-        value=f"{ch['counter']:,}",
-        inline=False
-    )
+    embed.add_field(name="📦 Total Counter", value=f"{ch['counter']:,}", inline=False)
 
     embed.add_field(
         name="📊 Breakdown",
@@ -359,17 +360,15 @@ async def status(interaction: discord.Interaction):
         inline=False
     )
 
-    await interaction.response.send_message(embed=embed)
+    await interaction.followup.send(embed=embed)
 # =========================
 # READY
 # =========================
 @client.event
 async def on_ready():
     load_counter()
-
-    await tree.sync()  # 🔥 THIS MAKES /status APPEAR
-
-    print(f"Logged in as {client.user}")
+    await tree.sync(guild=guild)
+    print("Ready")
 
 # =========================
 # START BOT
@@ -377,4 +376,3 @@ async def on_ready():
 if __name__ == "__main__":
     keep_alive()
     client.run(TOKEN)
-
