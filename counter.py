@@ -1,9 +1,9 @@
 import discord
 import json
-from flask import Flask
-from threading import Thread
 import traceback
 import os
+from flask import Flask
+from threading import Thread
 
 # =========================
 # CONFIG
@@ -33,7 +33,7 @@ client = discord.Client(intents=intents)
 # =========================
 # FLASK KEEP ALIVE
 # =========================
-app = Flask('')
+app = Flask("")
 
 @app.route("/")
 def home():
@@ -41,11 +41,10 @@ def home():
 
 def run():
     port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host="0.0.0.0", port=port)
 
 def keep_alive():
-    t = Thread(target=run)
-    t.start()
+    Thread(target=run).start()
 
 # =========================
 # DATA (SEPARATED SYSTEM)
@@ -323,15 +322,17 @@ async def on_message(message):
             save_counter()
             await message.channel.send("🧹 Channel 2 + users reset only!")
 
+# =========================
+# READY
+# =========================
 @client.event
 async def on_ready():
     load_counter()
     print(f"Logged in as {client.user}")
 
 # =========================
-# START
+# START BOT
 # =========================
 if __name__ == "__main__":
     keep_alive()
-    token = os.getenv("DISCORD_TOKEN")
-    bot.run(token)
+    client.run(TOKEN)
