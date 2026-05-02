@@ -4,6 +4,7 @@ import traceback
 import os
 from flask import Flask
 from threading import Thread
+from discord import app_commands
 
 # =========================
 # CONFIG
@@ -29,6 +30,7 @@ intents.message_content = True
 intents.members = True
 
 client = discord.Client(intents=intents)
+tree = discord.app_commands.CommandTree(client)
 
 # =========================
 # FLASK KEEP ALIVE
@@ -322,46 +324,50 @@ async def on_message(message):
             save_counter()
             await message.channel.send("🧹 Channel 2 + users reset only!")
    
-    # =========================
-    # STATUS COMMAND (CHANNEL 2 ONLY)
-    # =========================
-    if message.content.lower() == "!status":
+# =========================
+# STATUS COMMAND (CHANNEL 2 ONLY)
+# =========================
+ @tree.command(name="status", description="Show Channel 2 status")
+async def status(interaction: discord.Interaction):
 
-        if message.channel.id != CHANNEL_2:
-            return
+    if interaction.channel.id != CHANNEL_2:
+        await interaction.response.send_message("❌ Use this in Channel 2 only!", ephemeral=True)
+        return
 
-        ch = data["channel2"]
+    ch = data["channel2"]
 
-        embed = discord.Embed(
-            title="📊 Channel 2 Status",
-            color=discord.Color.blue()
-        )
+    embed = discord.Embed(
+        title="📊 Channel 2 Status",
+        color=discord.Color.blue()
+    )
 
-        embed.add_field(
-            name="📦 Total Counter",
-            value=f"{ch['counter']:,}",
-            inline=False
-        )
+    embed.add_field(
+        name="📦 Total Counter",
+        value=f"{ch['counter']:,}",
+        inline=False
+    )
 
-        embed.add_field(
-            name="📊 Breakdown",
-            value=(
-                f"🟢 Mini: {ch['mini']:,}\n"
-                f"🔵 Small: {ch['small']:,}\n"
-                f"🟡 Mediant: {ch['mediant']:,}\n"
-                f"🔴 Vast: {ch['vast']:,}"
-            ),
-            inline=False
-        )
+    embed.add_field(
+        name="📊 Breakdown",
+        value=(
+            f"🟢 Mini: {ch['mini']:,}\n"
+            f"🔵 Small: {ch['small']:,}\n"
+            f"🟡 Mediant: {ch['mediant']:,}\n"
+            f"🔴 Vast: {ch['vast']:,}"
+        ),
+        inline=False
+    )
 
-        await message.channel.send(embed=embed)
-
+    await interaction.response.send_message(embed=embed)
 # =========================
 # READY
 # =========================
 @client.event
 async def on_ready():
     load_counter()
+
+    await tree.sync()  # 🔥 THIS MAKES /status APPEAR
+
     print(f"Logged in as {client.user}")
 
 # =========================
