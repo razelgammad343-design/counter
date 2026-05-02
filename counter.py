@@ -21,8 +21,6 @@ ALLOWED_CHANNEL_IDS = [CHANNEL_1, CHANNEL_2]
 ALLOWED_ROLE_ID = 1466987521987711047
 OWNER_ID = 923096413934616596
 
-status_message_id = None
-
 # =========================
 # INTENTS
 # =========================
@@ -49,11 +47,23 @@ def keep_alive():
     Thread(target=run).start()
 
 # =========================
-# DATA
+# DATA (SEPARATED SYSTEM)
 # =========================
 data = {
-    "channel1": {"counter": 0, "mini": 0, "small": 0, "mediant": 0, "vast": 0},
-    "channel2": {"counter": 0, "mini": 0, "small": 0, "mediant": 0, "vast": 0},
+    "channel1": {
+        "counter": 0,
+        "mini": 0,
+        "small": 0,
+        "mediant": 0,
+        "vast": 0
+    },
+    "channel2": {
+        "counter": 0,
+        "mini": 0,
+        "small": 0,
+        "mediant": 0,
+        "vast": 0
+    },
     "users": {}
 }
 
@@ -73,7 +83,7 @@ def save_counter():
         json.dump(data, f, indent=4)
 
 # =========================
-# USER DATA
+# USER DATA (CHANNEL 2 ONLY)
 # =========================
 def get_user_data(user_id):
     uid = str(user_id)
@@ -91,36 +101,6 @@ def get_user_data(user_id):
     return data["users"][uid]
 
 # =========================
-# STATUS PANEL BUILDER
-# =========================
-async def build_user_status(user_id):
-    u = get_user_data(user_id)
-
-    embed = discord.Embed(
-        title="📊 Your Channel 2 Status",
-        color=discord.Color.gold()
-    )
-
-    embed.add_field(name="📦 Total", value=f"{u['counter']:,}", inline=False)
-
-    embed.add_field(
-        name="📦 Breakdown",
-        value=(
-            f"🟢 Mini: {u['mini']:,}\n"
-            f"🔵 Small: {u['small']:,}\n"
-            f"🟡 Mediant: {u['mediant']:,}\n"
-            f"🔴 Vast: {u['vast']:,}"
-        ),
-        inline=False
-    )
-
-    embed.add_field(name="💰 Profit (WL)", value=f"{u['profit']:.2f}", inline=False)
-
-    embed.set_footer(text="📡 Auto-updating system")
-
-    return embed
-
-# =========================
 # LOG SYSTEM
 # =========================
 async def send_live_log(channel, user, pack, value):
@@ -134,7 +114,11 @@ async def send_live_log(channel, user, pack, value):
         color=discord.Color.green()
     )
 
-    embed.add_field(name="📊 Total", value=f"{ch['counter']:,}", inline=False)
+    embed.add_field(
+        name="📊 Total",
+        value=f"{ch['counter']:,}",
+        inline=False
+    )
 
     embed.add_field(
         name="📦 Breakdown",
@@ -147,14 +131,19 @@ async def send_live_log(channel, user, pack, value):
         inline=False
     )
 
+    # ONLY CHANNEL 2 PROFIT
     if channel.id == CHANNEL_2:
         u = get_user_data(user.id)
-        embed.add_field(name="💰 Profit", value=f"{u['profit']:.2f} WL", inline=False)
+        embed.add_field(
+            name="💰 Profit(WL)",
+            value=f"{u['profit']:.2f}",
+            inline=False
+        )
 
     await channel.send(embed=embed)
 
 # =========================
-# IMAGE VIEW (SINGLE USE ONLY)
+# IMAGE VIEW (ONE TIME USE FIXED)
 # =========================
 class ImageView(discord.ui.View):
     def __init__(self, uploader_id):
@@ -162,18 +151,27 @@ class ImageView(discord.ui.View):
         self.uploader_id = uploader_id
         self.used = False
 
+    # 🔒 HARD BLOCK (runs BEFORE button logic)
     async def interaction_check(self, interaction: discord.Interaction):
 
         if self.used:
+            await interaction.response.send_message("❌ Already used!", ephemeral=True)
             return False
 
+        # ONLY uploader can use buttons
         if interaction.user.id != self.uploader_id:
-            await interaction.response.send_message("❌ Only uploader can use!", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Only the image uploader can use these buttons!",
+                ephemeral=True
+            )
             return False
 
+        # channel lock
         if interaction.channel.id not in ALLOWED_CHANNEL_IDS:
+            await interaction.response.send_message("❌ Wrong channel!", ephemeral=True)
             return False
 
+        # role check
         member = interaction.guild.get_member(interaction.user.id)
         if not member or not any(role.id == ALLOWED_ROLE_ID for role in member.roles):
             await interaction.response.send_message("❌ No permission!", ephemeral=True)
@@ -181,34 +179,40 @@ class ImageView(discord.ui.View):
 
         return True
 
+    # 🔥 LOCK VIEW AFTER FIRST USE
     async def lock(self, interaction):
         self.used = True
+
         for item in self.children:
             item.disabled = True
+
         await interaction.message.edit(view=self)
 
+    # =========================
+    # BUTTONS (SAFE)
+    # =========================
     @discord.ui.button(label="Mini", style=discord.ButtonStyle.success)
-    async def mini(self, interaction, button):
+    async def mini(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.lock(interaction)
         await interaction.response.send_modal(AddModal("Mini", self))
 
     @discord.ui.button(label="Small", style=discord.ButtonStyle.primary)
-    async def small(self, interaction, button):
+    async def small(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.lock(interaction)
         await interaction.response.send_modal(AddModal("Small", self))
 
     @discord.ui.button(label="Mediant", style=discord.ButtonStyle.secondary)
-    async def mediant(self, interaction, button):
+    async def mediant(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.lock(interaction)
         await interaction.response.send_modal(AddModal("Mediant", self))
 
     @discord.ui.button(label="Vast", style=discord.ButtonStyle.danger)
-    async def vast(self, interaction, button):
+    async def vast(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.lock(interaction)
         await interaction.response.send_modal(AddModal("Vast", self))
 
 # =========================
-# MODAL
+# MODAL (FULL FIX)
 # =========================
 class AddModal(discord.ui.Modal):
     def __init__(self, pack, view):
@@ -222,46 +226,36 @@ class AddModal(discord.ui.Modal):
 
         try:
             value = float(self.number.value.replace(",", ""))
-            key = self.pack.lower()
 
+            pack_key = self.pack.lower()
+
+            # =========================
+            # CHANNEL 1
+            # =========================
             if interaction.channel.id == CHANNEL_1:
 
                 ch = data["channel1"]
                 ch["counter"] += value
-                ch[key] += value
+                ch[pack_key] += value
+
                 profit = 0
 
+            # =========================
+            # CHANNEL 2
+            # =========================
             else:
 
                 ch = data["channel2"]
                 u = get_user_data(interaction.user.id)
 
                 ch["counter"] += value
-                ch[key] += value
+                ch[pack_key] += value
 
                 u["counter"] += value
-                u[key] += value
+                u[pack_key] += value
 
                 profit = (value / 100000) * 15
                 u["profit"] += profit
-
-                # =========================
-                # UPDATE STATUS PANEL
-                # =========================
-                global status_message_id
-
-                try:
-                    channel = interaction.channel
-                    msg = await channel.fetch_message(status_message_id)
-
-                    embed = await build_user_status(interaction.user.id)
-
-                    await msg.edit(
-                        content=f"📡 Updated: {interaction.user.mention}",
-                        embed=embed
-                    )
-                except:
-                    pass
 
             save_counter()
 
@@ -273,9 +267,9 @@ class AddModal(discord.ui.Modal):
             await send_live_log(interaction.channel, interaction.user, self.pack, value)
             await self.view.lock(interaction)
 
-        except:
-            await interaction.response.send_message("❌ Invalid number!", ephemeral=True)
+        except Exception as e:
             print(traceback.format_exc())
+            await interaction.response.send_message(f"❌ Invalid number: {e}", ephemeral=True)
 
 # =========================
 # ON MESSAGE
@@ -289,6 +283,7 @@ async def on_message(message):
     if message.channel.id not in ALLOWED_CHANNEL_IDS:
         return
 
+    # IMAGE TRIGGER
     if message.attachments:
         if any(att.content_type and "image" in att.content_type for att in message.attachments):
             await message.channel.send(
@@ -296,21 +291,70 @@ async def on_message(message):
                 view=ImageView(message.author.id)
             )
 
+    # =========================
+    # CLEAR SYSTEM (FULLY SEPARATED)
+    # =========================
     if message.content.startswith("!clear"):
 
         if message.author.id != OWNER_ID:
             return
 
         if message.channel.id == CHANNEL_1:
-            data["channel1"] = {"counter": 0, "mini": 0, "small": 0, "mediant": 0, "vast": 0}
-            await message.channel.send("🧹 Channel 1 reset!")
+            data["channel1"] = {
+                "counter": 0,
+                "mini": 0,
+                "small": 0,
+                "mediant": 0,
+                "vast": 0
+            }
+            save_counter()
+            await message.channel.send("🧹 Channel 1 reset only!")
 
         elif message.channel.id == CHANNEL_2:
-            data["channel2"] = {"counter": 0, "mini": 0, "small": 0, "mediant": 0, "vast": 0}
+            data["channel2"] = {
+                "counter": 0,
+                "mini": 0,
+                "small": 0,
+                "mediant": 0,
+                "vast": 0
+            }
             data["users"] = {}
-            await message.channel.send("🧹 Channel 2 reset + users cleared!")
+            save_counter()
+            await message.channel.send("🧹 Channel 2 + users reset only!")
+   
+    # =========================
+    # STATUS COMMAND (CHANNEL 2 ONLY)
+    # =========================
+    if message.content.lower() == "!status":
 
-        save_counter()
+        if message.channel.id != CHANNEL_2:
+            return
+
+        ch = data["channel2"]
+
+        embed = discord.Embed(
+            title="📊 Channel 2 Status",
+            color=discord.Color.blue()
+        )
+
+        embed.add_field(
+            name="📦 Total Counter",
+            value=f"{ch['counter']:,}",
+            inline=False
+        )
+
+        embed.add_field(
+            name="📊 Breakdown",
+            value=(
+                f"🟢 Mini: {ch['mini']:,}\n"
+                f"🔵 Small: {ch['small']:,}\n"
+                f"🟡 Mediant: {ch['mediant']:,}\n"
+                f"🔴 Vast: {ch['vast']:,}"
+            ),
+            inline=False
+        )
+
+        await message.channel.send(embed=embed)
 
 # =========================
 # READY
@@ -320,23 +364,10 @@ async def on_ready():
     load_counter()
     print(f"Logged in as {client.user}")
 
-    global status_message_id
-
-    channel = client.get_channel(CHANNEL_2)
-
-    if channel:
-        embed = discord.Embed(
-            title="📊 Channel 2 Status Panel",
-            description="Live user tracking system",
-            color=discord.Color.blue()
-        )
-
-        msg = await channel.send(embed=embed)
-        status_message_id = msg.id
-
 # =========================
-# START
+# START BOT
 # =========================
 if __name__ == "__main__":
     keep_alive()
     client.run(TOKEN)
+
