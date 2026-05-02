@@ -135,7 +135,7 @@ async def send_live_log(channel, user, pack, value):
     if channel.id == CHANNEL_2:
         u = get_user_data(user.id)
         embed.add_field(
-            name="💰 Profit (WL)",
+            name="💰 Profit :wl: ",
             value=f"{u['profit']:.2f}",
             inline=False
         )
