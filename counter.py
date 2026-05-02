@@ -325,9 +325,10 @@ async def on_message(message):
             await message.channel.send("🧹 Channel 2 + users reset only!")
    
 # =========================
-# STATUS COMMAND (CHANNEL 2 ONLY)
+# STATUS COMMAND
 # =========================
- @tree.command(name="status", description="Show Channel 2 status")
+
+@tree.command(name="status", description="Show Channel 2 status")
 async def status(interaction: discord.Interaction):
 
     if interaction.channel.id != CHANNEL_2:
