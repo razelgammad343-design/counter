@@ -4,7 +4,6 @@ import traceback
 import os
 from flask import Flask
 from threading import Thread
-from discord import app_commands
 
 # =========================
 # CONFIG
@@ -13,8 +12,7 @@ TOKEN = os.getenv("TOKEN")
 
 if not TOKEN:
     raise Exception("❌ TOKEN is missing!")
-GUILD_ID = 1409153710432452699  # 👈 replace with your server ID
-guild = discord.Object(id=GUILD_ID)
+    
 CHANNEL_1 = 1467897643471732980
 CHANNEL_2 = 1499279455431032873
 
@@ -26,16 +24,11 @@ OWNER_ID = 923096413934616596
 # =========================
 # INTENTS
 # =========================
-class MyClient(discord.Client):
-    def __init__(self):
-        super().__init__(intents=intents)
-        self.tree = app_commands.CommandTree(self)
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
 
-    async def setup_hook(self):
-        await self.tree.sync(guild=guild)  # 🔥 sync here instead of on_ready
-
-client = MyClient()
-tree = client.tree
+client = discord.Client(intents=intents)
 
 # =========================
 # FLASK KEEP ALIVE
@@ -328,47 +321,13 @@ async def on_message(message):
             data["users"] = {}
             save_counter()
             await message.channel.send("🧹 Channel 2 + users reset only!")
-   
-# =========================
-# STATUS COMMAND
-# =========================
-@tree.command(name="status", description="Show Channel 2 status", guild=guild)
-async def status(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-
-    if interaction.channel.id != CHANNEL_2:
-        await interaction.followup.send("❌ Use this in Channel 2 only!")
-        return
-
-    ch = data["channel2"]
-
-    embed = discord.Embed(
-        title="📊 Channel 2 Status",
-        color=discord.Color.blue()
-    )
-
-    embed.add_field(name="📦 Total Counter", value=f"{ch['counter']:,}", inline=False)
-
-    embed.add_field(
-        name="📊 Breakdown",
-        value=(
-            f"🟢 Mini: {ch['mini']:,}\n"
-            f"🔵 Small: {ch['small']:,}\n"
-            f"🟡 Mediant: {ch['mediant']:,}\n"
-            f"🔴 Vast: {ch['vast']:,}"
-        ),
-        inline=False
-    )
-
-    await interaction.followup.send(embed=embed)
 # =========================
 # READY
 # =========================
 @client.event
 async def on_ready():
     load_counter()
-    await tree.sync(guild=guild)
-    print("Ready")
+    print(f"Logged in as {client.user}")
 
 # =========================
 # START BOT
